@@ -1,0 +1,5 @@
+To read the combined help file "GoAsm.chm" you need the latest
+version of help.  You can get this by running the Microsoft 
+self-executing file Hhupd.exe.  This is available from www.microsoft.com.
+In that site just enter Hhupd.exe as a search line.
+If you still have trouble e-mail me on jg@jgnet.co.uk.

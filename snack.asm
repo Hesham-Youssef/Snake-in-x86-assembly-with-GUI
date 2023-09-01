@@ -1,6 +1,6 @@
 
 CELL STRUCT ; 64 byte total
-    coord   DD      0
+    coord   DD      5
     next    DD      0
 CELL ENDS
 
@@ -41,40 +41,46 @@ CODE SECTION
         JNE >NEXT
         CALL FOODEATEN
     NEXT:
-
+        mov ebx, ADDR head ;advancing the snake
+        L1:
+            mov eax, [ebx]
+            mov ebx, [ebx + 4]
+            test ebx, ebx
+            mov [ebx], eax
+            jnz L1
         RET
 
 
 
     DRAWER:
 
-    ADDNEWNODE:
-        mov eax, [hHeap]
-        push [hHeap], dwFlags, dwBytes
-        call HeapAlloc
-        mov [tail.next], eax
-        mov [tail.coord], ecx
-        mov [tail], eax
 
+    ADDNEWNODE:
+        invoke HeapAlloc, [hHeap], dwFlags, 10
+        mov ebx, [tail]
+        mov [tail], eax
+        mov [ebx + 4], eax
         RET
 
     INITSNAKE:
-        INVOKE GetProcessHeap
+        call GetProcessHeap
         mov [hHeap], eax
 
         mov [tail], ADDR head
-        mov ecx, 5
+        mov ecx, 0x00960096
         L1:
+            push ecx
             CALL ADDNEWNODE
+            pop ecx
+            mov [ebx], ecx
+            dec ecx
+            cmp ecx, 0x00960091
+            jne L1
         RET
+
 
     START:
         call INITSNAKE
         
-        mov ecx, 5
-        mov [cNode], ADDR head
-        L1:
-            mov eax, [cNode.coord]
-            mov ebx, [cNode.next]
-            mov [cNode], ebx
-            loop L1
+    
+        RET

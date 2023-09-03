@@ -15,8 +15,8 @@ DATA SECTION
     head    CELL    <500, 0> ; [y | x]
     tail    DD      ?
 
-    valx    DW      5
-    valy    DW      8
+    valx    DW      1
+    valy    DW      0
 
     foodCoord   DD  0
 
@@ -61,27 +61,29 @@ CODE SECTION
 
     CONTROLLER:
         MOV eax, [head.coord]
-
+        
         ADD ax, [valx]
         ROL eax, 16
         ADD ax, [valy] ; [x | y]
         ROL eax, 16
 
-        mov ebx, [foodCoord] ; [y | x]
+        mov [head.coord], eax
 
-        CMP eax, ebx
-        JNE >NEXT
-        CALL FOODEATEN
-    NEXT:
-        mov ebx, ADDR head ;advancing the snake
-        L1:
-            test ebx, ebx
-            jz >DONE
-            mov eax, [ebx]
-            mov ebx, [ebx + 4]
-            mov [ebx], eax
-            jmp L1
-        DONE:
+        ; mov ebx, [foodCoord] ; [y | x]
+
+        ; CMP eax, ebx
+        ; JNE >NEXT
+        ; CALL FOODEATEN
+        ; NEXT:
+            mov ebx, ADDR head ;advancing the snake
+            L1:
+                test ebx, ebx
+                jz >DONE
+                mov eax, [ebx]
+                mov ebx, [ebx + 4]
+                mov [ebx], eax
+                jmp <L1
+            DONE:
 
         RET
 
@@ -158,8 +160,7 @@ CODE SECTION
             mov eax, ADDR RECT
 
             mov edx, [ebx]
-            ADD w[ebx], 1
-
+            
             imul dx, 5
             mov [eax], dx
             ADD dx, 5
@@ -193,14 +194,15 @@ CODE SECTION
         ; PUSH 20D,'helooooooooo'    ;24=length of string
         ; PUSH [hASB]                ;handle to active screen buffer
         ; CALL WriteFile
+        call CONTROLLER
 
-        ; push 0x210
-        ; push 0
-        ; push 0
-        ; push [hwnd]
-        ; CALL RedrawWindow
-        
-        ; call PAINT
+        push 1
+        push 0
+        push [hwnd]
+        call InvalidateRect
+
+        push [hwnd]
+        CALL UpdateWindow
         RET 10h
 
     KEYDOWN:

@@ -7,6 +7,11 @@ CELL ENDS
 
 DATA SECTION
     ; HEAP_ZERO_MEMORY equ 0x00000008
+    hASB    DD      ?
+    hwnd    DD      0
+
+    RCKEEP DD 0
+
     head    CELL    <500, 0> ; [y | x]
     tail    DD      ?
 
@@ -28,7 +33,7 @@ DATA SECTION
     MSG DD 7 DUP 0
 
     MESSAGES DD (ENDOF_MESSAGES-$-4)/8      ;=number to be done
-            DD  1h,CREATE,2h,DESTROY,0Fh,PAINT
+            DD  0x0113,TIMER,1h,CREATE,2h,DESTROY,0Fh,PAINT,0x0100,KEYDOWN
     ENDOF_MESSAGES: 
 
     WNDCLASS DD 10D DUP 0 ;structure to send to RegisterClass holding data:-
@@ -82,7 +87,7 @@ CODE SECTION
 
 
 
-    DRAWER:
+    
 
 
     ADDNEWNODE:
@@ -122,12 +127,30 @@ CODE SECTION
 
     PAINT:
         MOV EBX,ADDR PAINTSTRUCT
-        PUSH EBX,[EBP+8h]           ;EBP+8h=hwnd
+        PUSH EBX,[hwnd]           ;EBP+8h=hwnd
         CALL BeginPaint             ;get device context to use, initialise paint
         MOV [hDC],EAX
+        
+        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
+        PUSH 17D,'from inside paint'    ;24=length of string
+        PUSH [hASB]                ;handle to active screen buffer
+        CALL WriteFile
+
+    ;     mov eax, [hwnd]
+    ;     test eax, eax
+    ;     jz >first
+    ;     PUSH 0, 0    ;rectangle bottom, right
+    ;     PUSH 500,500     ;rectangle top, left
+    ;     PUSH [hDC]
+    ;     CALL Ellipse
+    ; first:
 
 
-        mov ebx, ADDR head
+        mov ebx, ADDR head              ;could be improved by utilizing the fact that most 
+                                        ;of the information is already in the stack 
+                                        ;and just shifting the stack
+                                        ;pointer to reinclude the data
+    
         DRAWSNAKE:
             test ebx, ebx
             jz >snakeend
@@ -135,6 +158,8 @@ CODE SECTION
             mov eax, ADDR RECT
 
             mov edx, [ebx]
+            ADD w[ebx], 1
+
             imul dx, 5
             mov [eax], dx
             ADD dx, 5
@@ -156,10 +181,36 @@ CODE SECTION
 
         snakeend:
 
-        PUSH ADDR PAINTSTRUCT, [EBP+8h]           ;EBP+8h=hwnd
+        PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
         CALL EndPaint
         XOR EAX,EAX
         RET
+
+    TIMER:
+        mov eax, [ebp+10h]  ;note: key is in the wparam
+        
+        ; PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
+        ; PUSH 20D,'helooooooooo'    ;24=length of string
+        ; PUSH [hASB]                ;handle to active screen buffer
+        ; CALL WriteFile
+
+        ; push 0x210
+        ; push 0
+        ; push 0
+        ; push [hwnd]
+        ; CALL RedrawWindow
+        
+        ; call PAINT
+        RET 10h
+
+    KEYDOWN:
+        mov eax, [ebp+10h]  ;note: key is in the wparam
+        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
+        PUSH 20D,'from inside LMOUSEUP'    ;24=length of string
+        PUSH [hASB]                ;handle to active screen buffer
+        CALL WriteFile
+        xor eax, eax
+        ret
 
     GENERAL_WNDPROC:        ;eax can be used to convey information to the call
         PUSH EBP                ;use ebp to avoid using eax which may hold information
@@ -189,8 +240,8 @@ CODE SECTION
     WndProcTable:
         MOV EDX,ADDR MESSAGES   ;give edx the list of messages to deal with
         CALL GENERAL_WNDPROC    ;call the generic message handler
-        RET 10h                 ;restore the stack as required by caller
-    
+        RET 10h              ;restore the stack as required by caller
+
 
     INITIALISE_WNDCLASS:    ;get ready to register the window class
         MOV EBX,ADDR WNDCLASS
@@ -212,6 +263,12 @@ CODE SECTION
 
 
     START:
+        PUSH -11D               ;STD_OUTPUT_HANDLE
+        CALL GetStdHandle
+        mov [hASB], eax
+        
+        
+
         PUSH 0
         CALL GetModuleHandleA   ;get handle to the process
         MOV [hInst],EAX         ;record it in data label hInst
@@ -234,6 +291,14 @@ CODE SECTION
         PUSH ADDR WINDOW_CLASSNAME     ;window class name
         PUSH 0                  ;extended window style
         CALL CreateWindowExA    ;make window, returning handle in EAX
+        mov [hwnd], eax
+
+        push ADDR TIMER
+        push 0x3E8
+        push 42
+        push eax
+        call SetTimer
+
 
         call INITSNAKE
 

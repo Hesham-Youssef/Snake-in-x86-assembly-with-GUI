@@ -8,6 +8,12 @@ CELL ENDS
 
 DATA SECTION
     ; HEAP_ZERO_MEMORY equ 0x00000008
+
+    HEIGHT  equ     700
+    WIDTH   equ     700
+    SCALE   equ     7      ;assuming we the original grid is 100x100
+    SIDELEN equ     7      
+
     hASB    DD      ?
     hwnd    DD      0
 
@@ -16,13 +22,13 @@ DATA SECTION
     head    DD      ?
     tail    DD      ?
 
-    valx    DW      0
-    valy    DW      -1
+    valx    DW      -1
+    valy    DW      0
 
-    foodCoord   DD  0
+    foodCoord   DD  0x00320040
 
     hHeap   DD      ?
-    dwBytes equ      sizeof CELL
+    dwBytes equ     sizeof CELL + 1
     dwFlags equ     0x00000008 ; HEAP_ZERO_MEMORY (sets newly allocated mem to zero)
 
     hInst   DD      0
@@ -94,7 +100,23 @@ CODE SECTION
         ret
 
     FOODEATEN: ;Reallocate extra cell and randomize the foods position
+        ; call ADDNEWNODE
+        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
+        PUSH 20D,'from inside foodeaten'    ;24=length of string
+        PUSH [hASB]                ;handle to active screen buffer
+        CALL WriteFile
+
         call ADDNEWNODE
+        mov ebx, [ebx]
+        mov [eax], ebx
+
+        call ADDNEWNODE
+        mov ebx, [ebx]
+        mov [eax], ebx
+
+        call ADDNEWNODE
+        mov ebx, [ebx]
+        mov [eax], ebx
         RET
 
 
@@ -122,22 +144,13 @@ CODE SECTION
 
         mov d[edi], eax
 
-        ; mov ebx, [foodCoord] ; [y | x]
+        mov ebx, [foodCoord] ; [y | x]
 
-        ; CMP eax, ebx
-        ; JNE >NEXT
-        ; CALL FOODEATEN
-        ; NEXT:
-            ; mov ebx, ADDR head ;advancing the snake
-            ; L1:
-            ;     mov eax, [ebx]
-            ;     mov ebx, [ebx + 4]
-            ;     test ebx, ebx
-            ;     jz >DONE
-            ;     mov [ebx], eax
-            ;     jmp <L1
-            ; DONE:
-
+        CMP eax, ebx
+        JNE >NOTHINGEATEN
+            CALL FOODEATEN
+        NOTHINGEATEN:
+        
         RET
 
 
@@ -157,7 +170,7 @@ CODE SECTION
         call GetProcessHeap
         mov [hHeap], eax
         
-        invoke HeapAlloc, [hHeap], dwFlags, 9
+        invoke HeapAlloc, [hHeap], dwFlags, 9 ; wrong size (i don't even know how does this still works)
         mov [head], eax
     
 
@@ -183,6 +196,26 @@ CODE SECTION
         CALL PostQuitMessage    ;exit via the message loop
         STC                     ;go to DefWindowProc too
         RET
+
+    DRAWWITHCOORD: ; put coord into edx before calling
+        imul dx, SCALE
+        mov [eax], dx
+        ADD dx, SIDELEN
+        mov [eax+8], dx
+
+        shr edx, 16
+        imul dx, SCALE
+        mov [eax+4], dx
+        ADD dx, SIDELEN
+        mov [eax+12], dx
+
+        push ecx
+        push ADDR RECT
+        push [hDC]
+
+        call FillRect
+
+        ret
 
 
     PAINT:
@@ -212,29 +245,18 @@ CODE SECTION
             jz >snakeend
             
             mov eax, ADDR RECT
-
             mov edx, [ebx]
-            
-            imul dx, 5
-            mov [eax], dx
-            ADD dx, 5
-            mov [eax+8], dx
+            mov ecx, 9
+            call DRAWWITHCOORD 
 
-            shr edx, 16
-            imul dx, 5
-            mov [eax+4], dx
-            ADD dx, 5
-            mov [eax+12], dx
-
-            push 9
-            push ADDR RECT
-            push [hDC]
-
-            call FillRect
             mov ebx, [ebx + 4]
             jmp DRAWSNAKE
-
         snakeend:
+
+        mov eax, ADDR RECT
+        mov edx, [foodCoord]
+        mov ecx, 27         ;note: don't forget (color + 1)
+        call DRAWWITHCOORD
 
         PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
         CALL EndPaint
@@ -266,10 +288,6 @@ CODE SECTION
         jg >continue
         call [KEYS + eax*4]
 
-        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
-        PUSH 20D,'from inside LMOUSEUP'    ;24=length of string
-        PUSH [hASB]                ;handle to active screen buffer
-        CALL WriteFile
     continue:
         xor eax, eax
         ret
@@ -344,8 +362,8 @@ CODE SECTION
         PUSH EBX                ;address of structure with window class data
         CALL RegisterClassA     ;register the window class
         PUSH 0,[hInst],0,0      ;owner=desktop
-        PUSH 500               ;height
-        PUSH 500               ;width
+        PUSH HEIGHT               ;height
+        PUSH WIDTH               ;width
         PUSH 50D,50D            ;position y then x
         PUSH 90000000h +0C00000h+40000h +80000h +20000h     +10000h      ;window style
         ;(POPUP+VISIBLE)+CAPTION+SIZEBOX+SYSMENU+MINIMIZEBOX+MAXIMIZEBOX

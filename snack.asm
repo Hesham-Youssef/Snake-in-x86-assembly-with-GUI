@@ -2,6 +2,7 @@
 CELL STRUCT ; 8 byte total
     coord   DD      0
     next    DD      0
+    prev    DD      0
 CELL ENDS
 
 
@@ -12,11 +13,11 @@ DATA SECTION
 
     RCKEEP DD 0
 
-    head    CELL    <500, 0> ; [y | x]
+    head    DD      ?
     tail    DD      ?
 
-    valx    DW      1
-    valy    DW      0
+    valx    DW      0
+    valy    DW      -1
 
     foodCoord   DD  0
 
@@ -36,6 +37,12 @@ DATA SECTION
             DD  0x0113,TIMER,1h,CREATE,2h,DESTROY,0Fh,PAINT,0x0100,KEYDOWN
     ENDOF_MESSAGES: 
 
+    KEYS    DD  LEFT_KEY
+            DD  UP_KEY
+            DD  RIGHT_KEY
+            DD  DOWN_KEY
+
+
     WNDCLASS DD 10D DUP 0 ;structure to send to RegisterClass holding data:-
                     ;+0 window class style (CS_)
                     ;+4 pointer to Window Procedure
@@ -54,20 +61,66 @@ DATA SECTION
                             ;+C lower right y
 CODE SECTION
 
+    LEFT_KEY:
+        mov ax, [valx]
+        test ax, ax
+        jnz >continue
+        mov w[valx], -1
+        mov w[valy], 0
+        ret
+    
+    UP_KEY:
+        mov ax, [valy]
+        test ax, ax
+        jnz >continue
+        mov w[valy], -1
+        mov w[valx], 0
+        ret 
+
+    RIGHT_KEY:
+        mov ax, [valx]
+        test ax, ax
+        jnz >continue
+        mov w[valx], 1
+        mov w[valy], 0
+        ret 
+
+    DOWN_KEY:
+        mov ax, [valy]
+        test ax, ax
+        jnz >continue
+        mov w[valy], 1
+        mov w[valx], 0
+        ret
+
     FOODEATEN: ;Reallocate extra cell and randomize the foods position
         call ADDNEWNODE
         RET
 
 
     CONTROLLER:
-        MOV eax, [head.coord]
+        mov esi, [head]
+        mov edi, [tail]
+        mov ebx, d[edi+8]
+
+        mov d[ebx+4], 0
         
+        mov d[esi + 8], edi
+
+        mov d[edi+4], esi
+        mov d[edi+8], 0
+        
+        mov [head], edi
+        mov [tail], ebx
+
+        mov eax, d[esi]
+
         ADD ax, [valx]
         ROL eax, 16
         ADD ax, [valy] ; [x | y]
         ROL eax, 16
 
-        mov [head.coord], eax
+        mov d[edi], eax
 
         ; mov ebx, [foodCoord] ; [y | x]
 
@@ -75,15 +128,15 @@ CODE SECTION
         ; JNE >NEXT
         ; CALL FOODEATEN
         ; NEXT:
-            mov ebx, ADDR head ;advancing the snake
-            L1:
-                test ebx, ebx
-                jz >DONE
-                mov eax, [ebx]
-                mov ebx, [ebx + 4]
-                mov [ebx], eax
-                jmp <L1
-            DONE:
+            ; mov ebx, ADDR head ;advancing the snake
+            ; L1:
+            ;     mov eax, [ebx]
+            ;     mov ebx, [ebx + 4]
+            ;     test ebx, ebx
+            ;     jz >DONE
+            ;     mov [ebx], eax
+            ;     jmp <L1
+            ; DONE:
 
         RET
 
@@ -95,16 +148,21 @@ CODE SECTION
     ADDNEWNODE:
         invoke HeapAlloc, [hHeap], dwFlags, 9 ;8 for the node and one extra because otherwise an error will occur
         mov ebx, [tail]
+        mov [ebx+4], eax
         mov [tail], eax
-        mov [ebx + 4], eax
+        mov [eax + 8], ebx
         RET
 
     INITSNAKE:
         call GetProcessHeap
         mov [hHeap], eax
+        
+        invoke HeapAlloc, [hHeap], dwFlags, 9
+        mov [head], eax
+    
 
-        mov [tail], ADDR head
-        mov [head], 0x00320031
+        mov [tail], eax
+        mov [eax], 0x00320031
         mov ecx, 0x00320032
         L1:
             push ecx
@@ -133,10 +191,6 @@ CODE SECTION
         CALL BeginPaint             ;get device context to use, initialise paint
         MOV [hDC],EAX
         
-        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
-        PUSH 17D,'from inside paint'    ;24=length of string
-        PUSH [hASB]                ;handle to active screen buffer
-        CALL WriteFile
 
     ;     mov eax, [hwnd]
     ;     test eax, eax
@@ -148,7 +202,7 @@ CODE SECTION
     ; first:
 
 
-        mov ebx, ADDR head              ;could be improved by utilizing the fact that most 
+        mov ebx, [head]              ;could be improved by utilizing the fact that most 
                                         ;of the information is already in the stack 
                                         ;and just shifting the stack
                                         ;pointer to reinclude the data
@@ -188,12 +242,7 @@ CODE SECTION
         RET
 
     TIMER:
-        mov eax, [ebp+10h]  ;note: key is in the wparam
-        
-        ; PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
-        ; PUSH 20D,'helooooooooo'    ;24=length of string
-        ; PUSH [hASB]                ;handle to active screen buffer
-        ; CALL WriteFile
+
         call CONTROLLER
 
         push 1
@@ -205,12 +254,23 @@ CODE SECTION
         CALL UpdateWindow
         RET 10h
 
+
+
+
+
     KEYDOWN:
         mov eax, [ebp+10h]  ;note: key is in the wparam
+        sub eax, 0x25
+        js >continue
+        cmp eax, 3
+        jg >continue
+        call [KEYS + eax*4]
+
         PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
         PUSH 20D,'from inside LMOUSEUP'    ;24=length of string
         PUSH [hASB]                ;handle to active screen buffer
         CALL WriteFile
+    continue:
         xor eax, eax
         ret
 
@@ -289,14 +349,14 @@ CODE SECTION
         PUSH 50D,50D            ;position y then x
         PUSH 90000000h +0C00000h+40000h +80000h +20000h     +10000h      ;window style
         ;(POPUP+VISIBLE)+CAPTION+SIZEBOX+SYSMENU+MINIMIZEBOX+MAXIMIZEBOX
-        PUSH 'Hello World window made by GoAsm'       ;window title
+        PUSH 'THE ADVENTURES OF ASM THE SNAKE'       ;window title
         PUSH ADDR WINDOW_CLASSNAME     ;window class name
         PUSH 0                  ;extended window style
         CALL CreateWindowExA    ;make window, returning handle in EAX
         mov [hwnd], eax
 
         push ADDR TIMER
-        push 0x3E8
+        push 0x3D
         push 42
         push eax
         call SetTimer

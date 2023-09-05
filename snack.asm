@@ -8,13 +8,17 @@ CELL ENDS
 
 DATA SECTION
     ; HEAP_ZERO_MEMORY equ 0x00000008
+    ISALIVE DB      1   
+
     SEED    DD      ?
     MULTI   equ     1664525
     INCRE   equ     1013904223
     MODU    equ     4294967295
 
-    HEIGHT  equ     700
-    WIDTH   equ     700
+    GRIDSIZE equ    100
+
+    HEIGHT  equ     730
+    WIDTH   equ     708
     SCALE   equ     7      ;assuming we the original grid is 100x100
     SIDELEN equ     7      
 
@@ -29,7 +33,7 @@ DATA SECTION
     valx    DW      -1
     valy    DW      0
 
-    foodCoord   DD  0x00320040
+    foodCoord   DD  0x00630063
 
     hHeap   DD      ?
     dwBytes equ     sizeof CELL + 1
@@ -115,18 +119,18 @@ CODE SECTION
         mov eax, edx
         xor edx, edx
 
-        mov bx, 100
+        mov bx, GRIDSIZE
         div bx
         mov bx, dx
 
         shr eax, 16
         shl ebx, 16
 
-        mov bx, 100
+        mov bx, GRIDSIZE
         div bx
         mov bx, dx
 
-        mov [foodCoord], ebx
+        mov eax, ebx
 
         ret
 
@@ -147,14 +151,33 @@ CODE SECTION
             loop ADDCELLS
             
         call RAND
+        mov [foodCoord], eax
 
         RET
 
 
+
     CONTROLLER:
+        mov al, [ISALIVE]
+        test al, al
+        jz >DEAD
+
         mov esi, [head]
         mov edi, [tail]
         mov ebx, d[edi+8]
+
+        mov eax, d[esi]
+
+        ADD ax, [valx]
+        js >DEAD
+        cmp ax, 100
+        jge >DEAD
+
+        ROL eax, 16
+        ADD ax, [valy] ; [x | y]
+        js >DEAD
+        cmp ax, 100
+        jge >DEAD
 
         mov d[ebx+4], 0
         
@@ -166,14 +189,9 @@ CODE SECTION
         mov [head], edi
         mov [tail], ebx
 
-        mov eax, d[esi]
-
-        ADD ax, [valx]
         ROL eax, 16
-        ADD ax, [valy] ; [x | y]
-        ROL eax, 16
-
         mov d[edi], eax
+        
 
         mov ebx, [foodCoord] ; [y | x]
 
@@ -181,7 +199,12 @@ CODE SECTION
         JNE >NOTHINGEATEN
             CALL FOODEATEN
         NOTHINGEATEN:
-        
+
+        JMP >VALIDMOVE
+
+        DEAD:
+            mov B[ISALIVE], 0
+        VALIDMOVE:
         RET
 
 
@@ -200,6 +223,9 @@ CODE SECTION
     INITSNAKE:
         rdseed eax
         mov [SEED], eax
+
+        ; call RAND
+        ; mov [foodCoord], eax
 
         call GetProcessHeap
         mov [hHeap], eax
@@ -399,8 +425,8 @@ CODE SECTION
         PUSH HEIGHT               ;height
         PUSH WIDTH               ;width
         PUSH 50D,50D            ;position y then x
-        PUSH 90000000h +0C00000h+40000h +80000h +20000h     +10000h      ;window style
-        ;(POPUP+VISIBLE)+CAPTION+SIZEBOX+SYSMENU+MINIMIZEBOX+MAXIMIZEBOX
+        PUSH 90000000h +0C00000h+80000h +20000h      ;window style
+        ;(POPUP+VISIBLE)+CAPTION+SYSMENU+MINIMIZEBOX
         PUSH 'THE ADVENTURES OF ASM THE SNAKE'       ;window title
         PUSH ADDR WINDOW_CLASSNAME     ;window class name
         PUSH 0                  ;extended window style

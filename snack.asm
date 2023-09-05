@@ -8,6 +8,10 @@ CELL ENDS
 
 DATA SECTION
     ; HEAP_ZERO_MEMORY equ 0x00000008
+    SEED    DD      ?
+    MULTI   equ     1664525
+    INCRE   equ     1013904223
+    MODU    equ     4294967295
 
     HEIGHT  equ     700
     WIDTH   equ     700
@@ -99,6 +103,33 @@ CODE SECTION
         mov w[valx], 0
         ret
 
+    RAND:
+        mov eax, [SEED]
+        IMUL eax, MULTI
+        ADD  eax, INCRE
+        xor edx, edx
+        mov ebx, MODU
+        div  ebx
+        mov [SEED], edx
+
+        mov eax, edx
+        xor edx, edx
+
+        mov bx, 100
+        div bx
+        mov bx, dx
+
+        shr eax, 16
+        shl ebx, 16
+
+        mov bx, 100
+        div bx
+        mov bx, dx
+
+        mov [foodCoord], ebx
+
+        ret
+
     FOODEATEN: ;Reallocate extra cell and randomize the foods position
         ; call ADDNEWNODE
         PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
@@ -106,17 +137,17 @@ CODE SECTION
         PUSH [hASB]                ;handle to active screen buffer
         CALL WriteFile
 
-        call ADDNEWNODE
-        mov ebx, [ebx]
-        mov [eax], ebx
+        mov ecx, 3
+        ADDCELLS:
+            push ecx
+            call ADDNEWNODE
+            mov ebx, [ebx]
+            mov [eax], ebx
+            pop ecx
+            loop ADDCELLS
+            
+        call RAND
 
-        call ADDNEWNODE
-        mov ebx, [ebx]
-        mov [eax], ebx
-
-        call ADDNEWNODE
-        mov ebx, [ebx]
-        mov [eax], ebx
         RET
 
 
@@ -167,6 +198,9 @@ CODE SECTION
         RET
 
     INITSNAKE:
+        rdseed eax
+        mov [SEED], eax
+
         call GetProcessHeap
         mov [hHeap], eax
         

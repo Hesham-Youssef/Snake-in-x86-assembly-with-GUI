@@ -48,7 +48,7 @@ DATA SECTION
     MSG DD 7 DUP 0
 
     MESSAGES DD (ENDOF_MESSAGES-$-4)/8      ;=number to be done
-            DD  0x0113,TIMER,1h,CREATE,2h,DESTROY,0Fh,PAINT,0x0100,KEYDOWN
+            DD  0x0113,TIMER,1h,CREATE,2h,DESTROY,0Fh,PAINT,0x0100,KEYDOWN,0x0201,MLDOWN
     ENDOF_MESSAGES: 
 
     KEYS    DD  LEFT_KEY
@@ -74,7 +74,16 @@ DATA SECTION
                             ;+8 lower right x
                             ;+C lower right y
 
+    
+
     REDBRUSH    DD      ?
+    BLACKBRUSH  DD      ?
+
+    CURRWIND    DB      1
+
+    WINDOWS     DD      GAMEPAINT 
+                DD      WELCOMEPAINT
+
 CODE SECTION
 
     LEFT_KEY:
@@ -246,6 +255,12 @@ CODE SECTION
         call CreateSolidBrush
         mov [REDBRUSH], eax
 
+
+        push 0x00000000 ;BLACK
+        call CreateSolidBrush
+        mov [BLACKBRUSH], eax
+
+
         call RAND
         mov [foodCoord], eax
 
@@ -292,7 +307,7 @@ CODE SECTION
         mov [eax+12], dx
 
         push ecx
-        push ADDR RECT
+        push eax
         push [hDC]
 
         call FillRect
@@ -300,30 +315,28 @@ CODE SECTION
         ret
 
 
-    PAINT:
+    GAMEPAINT:
         MOV EBX,ADDR PAINTSTRUCT
         PUSH EBX,[hwnd]           ;EBP+8h=hwnd
         CALL BeginPaint             ;get device context to use, initialise paint
         MOV [hDC],EAX
         
-        push 0x00000000
-        push eax
-        call SetBkColor
-    ;     mov eax, [hwnd]
-    ;     test eax, eax
-    ;     jz >first
-    ;     PUSH 0, 0    ;rectangle bottom, right
-    ;     PUSH 500,500     ;rectangle top, left
-    ;     PUSH [hDC]
-    ;     CALL Ellipse
-    ; first:
 
+        mov eax, ADDR RECT
+        mov d[eax], 0
+        mov d[eax+4], 0
+        mov d[eax+8], 750
+        mov d[eax+12], 750
+        push [BLACKBRUSH]
+        push eax
+        push [hDC]
+        call FillRect
 
         mov ebx, [head]              ;could be improved by utilizing the fact that most 
                                         ;of the information is already in the stack 
                                         ;and just shifting the stack
                                         ;pointer to reinclude the data
-    
+
         mov eax, ADDR RECT
         mov edx, [ebx]
         mov ecx, 27
@@ -353,10 +366,57 @@ CODE SECTION
         XOR EAX,EAX
         RET
 
+    WELCOMEPAINT:
+        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
+        PUSH 20D,'from inside foodeaten'    ;24=length of string
+        PUSH [hASB]                ;handle to active screen buffer
+        CALL WriteFile
+
+        MOV EBX,ADDR PAINTSTRUCT
+        PUSH EBX,[hwnd]           ;EBP+8h=hwnd
+        CALL BeginPaint             ;get device context to use, initialise paint
+        MOV [hDC],EAX
+        
+
+        mov eax, ADDR RECT
+        mov d[eax], 0
+        mov d[eax+4], 0
+        mov d[eax+8], 750
+        mov d[eax+12], 750
+        push [BLACKBRUSH]
+        push eax
+        push [hDC]
+        call FillRect
+
+        PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
+        CALL EndPaint
+        XOR EAX,EAX
+        RET
+
+
+    PAINT:
+        xor eax, eax
+        mov al, [CURRWIND]
+        call [WINDOWS + eax*4]
+        ret
+
+    MLDOWN:
+        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
+        PUSH 20D,'from inside foodeaten'    ;24=length of string
+        PUSH [hASB]                ;handle to active screen buffer
+        CALL WriteFile
+
+        mov b[CURRWIND], 0
+        ret
+
+
+
     TIMER:
-
-        call CONTROLLER
-
+        mov al, [CURRWIND]
+        test al, al
+        jnz >notmaingame
+            call CONTROLLER
+        notmaingame:
         push 1
         push 0
         push [hwnd]
@@ -367,9 +427,6 @@ CODE SECTION
         RET 10h
 
 
-
-
-
     KEYDOWN:
         mov eax, [ebp+10h]  ;note: key is in the wparam
         sub eax, 0x25
@@ -377,8 +434,7 @@ CODE SECTION
         cmp eax, 3
         jg >continue
         call [KEYS + eax*4]
-
-    continue:
+        continue:
         xor eax, eax
         ret
 

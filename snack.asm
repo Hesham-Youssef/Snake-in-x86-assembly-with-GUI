@@ -33,7 +33,7 @@ DATA SECTION
     valx    DW      -1
     valy    DW      0
 
-    foodCoord   DD  0x00630063
+    foodCoord   DD  ?
 
     hHeap   DD      ?
     dwBytes equ     sizeof CELL + 1
@@ -73,6 +73,8 @@ DATA SECTION
                             ;+4 upper left y
                             ;+8 lower right x
                             ;+C lower right y
+
+    REDBRUSH    DD      ?
 CODE SECTION
 
     LEFT_KEY:
@@ -160,11 +162,10 @@ CODE SECTION
     CONTROLLER:
         mov al, [ISALIVE]
         test al, al
-        jz >DEAD
+        jz >goon
 
         mov esi, [head]
-        mov edi, [tail]
-        mov ebx, d[edi+8]
+        
 
         mov eax, d[esi]
 
@@ -178,6 +179,24 @@ CODE SECTION
         js >DEAD
         cmp ax, 100
         jge >DEAD
+        ROL eax, 16
+
+        mov ebx, esi
+        snakestart:
+            test ebx, ebx
+            jz >snakedone
+            
+            cmp eax, [ebx]
+            jne >nooverlab
+            jmp >DEAD
+            nooverlab:
+                mov ebx, [ebx + 4]
+                jmp snakestart
+        snakedone: 
+        
+
+        mov edi, [tail]
+        mov ebx, d[edi+8]
 
         mov d[ebx+4], 0
         
@@ -189,7 +208,6 @@ CODE SECTION
         mov [head], edi
         mov [tail], ebx
 
-        ROL eax, 16
         mov d[edi], eax
         
 
@@ -200,11 +218,11 @@ CODE SECTION
             CALL FOODEATEN
         NOTHINGEATEN:
 
-        JMP >VALIDMOVE
+        JMP >goon
 
         DEAD:
             mov B[ISALIVE], 0
-        VALIDMOVE:
+        goon:
         RET
 
 
@@ -224,8 +242,12 @@ CODE SECTION
         rdseed eax
         mov [SEED], eax
 
-        ; call RAND
-        ; mov [foodCoord], eax
+        push 0x000000FF ;red
+        call CreateSolidBrush
+        mov [REDBRUSH], eax
+
+        call RAND
+        mov [foodCoord], eax
 
         call GetProcessHeap
         mov [hHeap], eax
@@ -284,7 +306,9 @@ CODE SECTION
         CALL BeginPaint             ;get device context to use, initialise paint
         MOV [hDC],EAX
         
-
+        push 0x00000000
+        push eax
+        call SetBkColor
     ;     mov eax, [hwnd]
     ;     test eax, eax
     ;     jz >first
@@ -300,13 +324,19 @@ CODE SECTION
                                         ;and just shifting the stack
                                         ;pointer to reinclude the data
     
+        mov eax, ADDR RECT
+        mov edx, [ebx]
+        mov ecx, 27
+        call DRAWWITHCOORD 
+        mov ebx, [ebx + 4]
+
         DRAWSNAKE:
             test ebx, ebx
             jz >snakeend
             
             mov eax, ADDR RECT
             mov edx, [ebx]
-            mov ecx, 9
+            mov ecx, 18
             call DRAWWITHCOORD 
 
             mov ebx, [ebx + 4]
@@ -315,7 +345,7 @@ CODE SECTION
 
         mov eax, ADDR RECT
         mov edx, [foodCoord]
-        mov ecx, 27         ;note: don't forget (color + 1)
+        mov ecx, [REDBRUSH]         ;note: don't forget (color + 1)
         call DRAWWITHCOORD
 
         PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd

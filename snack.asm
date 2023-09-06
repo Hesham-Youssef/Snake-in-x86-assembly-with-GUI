@@ -46,6 +46,7 @@ DATA SECTION
     hDC   DD 0            ;to keep the handle of the device context
     PAINTSTRUCT DD 16 DUP 0  ;structure to hold stuff from Windows on WM_PAINT
     MSG DD 7 DUP 0
+    memDC   DD   0
 
     MESSAGES DD (ENDOF_MESSAGES-$-4)/8      ;=number to be done
             DD  0x0113,TIMER,1h,CREATE,2h,DESTROY,0Fh,PAINT,0x0100,KEYDOWN,0x0201,MLDOWN
@@ -81,9 +82,19 @@ DATA SECTION
 
     CURRWIND    DB      1
 
+    hImage      DD      ?
+
     WINDOWS     DD      GAMEPAINT 
                 DD      WELCOMEPAINT
 
+    bitmap      DD      ?   ;+0 bmtype
+                DD      ?   ;+4 bmwidth
+                DD      ?   ;+8 BMHEIGHT
+                DD      ?   ;+12 BMWIDTHBYTES
+                DW      ?   ;+16 BMPLANES
+                DW      ?   ;+18 BMBITSPIXEL
+                DD      ?   ;+20 bmbits
+                DD      ?   ;+24 total number of bytes
 CODE SECTION
 
     LEFT_KEY:
@@ -251,6 +262,58 @@ CODE SECTION
         rdseed eax
         mov [SEED], eax
 
+        call GetProcessHeap
+        mov [hHeap], eax
+        
+
+        push 0x00000010 ;LR_LOADFROMFILE
+        push 0, 0, 0
+        push "image.bmp"
+        push 0
+        call LoadImageA
+        mov [hImage], eax
+
+        push ADDR bitmap
+        push SIZEOF bitmap
+        push eax
+        call GetObjectA
+
+        mov eax, [bitmap+4]
+        xor ebx, ebx
+        mov bx,[bitmap+16]
+        mul ebx
+        xor ebx, ebx
+        mov bx,[bitmap+18] 
+        mul ebx
+        add eax, 15
+        shr eax, 4
+        shl eax, 1
+        mul d[bitmap+8]
+        add eax, 5
+        mov [bitmap+24], eax
+
+        invoke HeapAlloc, [hHeap], dwFlags, eax
+
+        mov [bitmap+20], eax
+
+        push eax
+        push [bitmap+24]
+        push [hImage]
+        call GetBitmapBits
+
+        xor ebx, ebx
+        mov bx, [bitmap+18]
+        push [bitmap+20]
+        push ebx
+        xor ebx, ebx
+        mov bx, [bitmap+16]
+        push ebx
+        push [bitmap+8]
+        push [bitmap+4]
+        call CreateBitmap
+        mov [hImage], eax
+
+
         push 0x000000FF ;red
         call CreateSolidBrush
         mov [REDBRUSH], eax
@@ -264,8 +327,6 @@ CODE SECTION
         call RAND
         mov [foodCoord], eax
 
-        call GetProcessHeap
-        mov [hHeap], eax
         
         invoke HeapAlloc, [hHeap], dwFlags, 9 ; wrong size (i don't even know how does this still works)
         mov [head], eax
@@ -367,26 +428,33 @@ CODE SECTION
         RET
 
     WELCOMEPAINT:
-        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
-        PUSH 20D,'from inside foodeaten'    ;24=length of string
-        PUSH [hASB]                ;handle to active screen buffer
-        CALL WriteFile
+        ; MOV EBX,ADDR PAINTSTRUCT
+        ; PUSH EBX,[hwnd]           ;EBP+8h=hwnd
+        ; CALL BeginPaint             ;get device context to use, initialise paint
+        ; MOV [hDC],EAX
 
-        MOV EBX,ADDR PAINTSTRUCT
-        PUSH EBX,[hwnd]           ;EBP+8h=hwnd
-        CALL BeginPaint             ;get device context to use, initialise paint
-        MOV [hDC],EAX
-        
+        push [hwnd]
+        call GetDC
+        mov [hDC], eax
 
-        mov eax, ADDR RECT
-        mov d[eax], 0
-        mov d[eax+4], 0
-        mov d[eax+8], 750
-        mov d[eax+12], 750
-        push [BLACKBRUSH]
         push eax
+        call CreateCompatibleDC
+        mov [memDC], eax
+
+
+        push [hImage]
+        push [memDC]
+        call SelectObject
+        
+        push 0x00CC0020
+        push 0, 0
+        push [memDC]
+        push [bitmap+8], [bitmap+4]
+        push 0, 0
         push [hDC]
-        call FillRect
+        call BitBlt
+
+        
 
         PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
         CALL EndPaint
@@ -398,7 +466,9 @@ CODE SECTION
         xor eax, eax
         mov al, [CURRWIND]
         call [WINDOWS + eax*4]
-        ret
+
+        XOR EAX,EAX
+        RET
 
     MLDOWN:
         PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API

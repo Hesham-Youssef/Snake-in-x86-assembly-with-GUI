@@ -86,6 +86,7 @@ DATA SECTION
 
     WINDOWS     DD      GAMEPAINT 
                 DD      WELCOMEPAINT
+                ; DD      DEATHPAINT
 
     bitmap      DD      ?   ;+0 bmtype
                 DD      ?   ;+4 bmwidth
@@ -95,6 +96,9 @@ DATA SECTION
                 DW      ?   ;+18 BMBITSPIXEL
                 DD      ?   ;+20 bmbits
                 DD      ?   ;+24 total number of bytes
+
+    gamespeed   DD      ?
+    score       DW      ?
 CODE SECTION
 
     LEFT_KEY:
@@ -103,7 +107,8 @@ CODE SECTION
         jnz >continue
         mov w[valx], -1
         mov w[valy], 0
-        ret
+        jmp >continue
+        
     
     UP_KEY:
         mov ax, [valy]
@@ -111,7 +116,7 @@ CODE SECTION
         jnz >continue
         mov w[valy], -1
         mov w[valx], 0
-        ret 
+        jmp >continue
 
     RIGHT_KEY:
         mov ax, [valx]
@@ -119,7 +124,7 @@ CODE SECTION
         jnz >continue
         mov w[valx], 1
         mov w[valy], 0
-        ret 
+        jmp >continue
 
     DOWN_KEY:
         mov ax, [valy]
@@ -127,7 +132,7 @@ CODE SECTION
         jnz >continue
         mov w[valy], 1
         mov w[valx], 0
-        ret
+        jmp >continue
 
     RAND:
         mov eax, [SEED]
@@ -174,6 +179,8 @@ CODE SECTION
             
         call RAND
         mov [foodCoord], eax
+
+        inc w[score]
 
         RET
 
@@ -242,6 +249,10 @@ CODE SECTION
 
         DEAD:
             mov B[ISALIVE], 0
+            push 42
+            push [hwnd]
+            call KillTimer
+            mov B[CURRWIND], 1
         goon:
         RET
 
@@ -258,7 +269,328 @@ CODE SECTION
         mov [eax + 8], ebx
         RET
 
+
     INITSNAKE:
+
+        mov w[score], 0
+
+        call RAND
+        mov [foodCoord], eax
+        
+        invoke HeapAlloc, [hHeap], dwFlags, sizeof CELL ; wrong size (i don't even know how does this still works)
+        mov [head], eax
+    
+
+        mov [tail], eax
+        mov [eax], 0x00320031
+        mov ecx, 0x00320032
+        L1:
+            push ecx
+            CALL ADDNEWNODE
+            pop ecx
+            mov [eax], ecx
+            inc ecx
+            cmp ecx, 0x00320038
+            jne L1
+        RET
+
+    CREATE:                 ;one of the few messages dealt with by this prog
+        XOR EAX,EAX             ;return zero to make window
+        RET
+        ;
+    DESTROY:                ;one of the few messages dealt with by this prog
+        PUSH 0
+        CALL PostQuitMessage    ;exit via the message loop
+        STC                     ;go to DefWindowProc too
+        RET
+
+    DRAWWITHCOORD: ; put coord into edx before calling
+        imul dx, SCALE
+        mov [eax], dx
+        ADD dx, SIDELEN
+        mov [eax+8], dx
+
+        shr edx, 16
+        imul dx, SCALE
+        mov [eax+4], dx
+        ADD dx, SIDELEN
+        mov [eax+12], dx
+
+        push ecx
+        push eax
+        push [memDC]
+
+        call FillRect
+        ret
+
+
+    GAMEPAINT:
+        MOV EBX,ADDR PAINTSTRUCT
+        PUSH EBX,[hwnd]           ;EBP+8h=hwnd
+        CALL BeginPaint             ;get device context to use, initialise paint
+        MOV [hDC],EAX
+        
+        push eax
+        call CreateCompatibleDC
+        mov [memDC], eax
+
+        push 750
+        push 750
+        push [hDC]
+        call CreateCompatibleBitmap
+
+        push eax
+        push [memDC]
+        call SelectObject
+
+
+        mov eax, ADDR RECT
+        mov d[eax], 0
+        mov d[eax+4], 0
+        mov d[eax+8], 750
+        mov d[eax+12], 750
+        push [BLACKBRUSH]
+        push eax
+        push [hDC]
+        call FillRect
+
+        mov ebx, [head]              ;could be improved by utilizing the fact that most 
+                                        ;of the information is already in the stack 
+                                        ;and just shifting the stack
+                                        ;pointer to reinclude the data
+
+        mov eax, ADDR RECT
+        mov edx, [ebx]
+        mov ecx, 27
+        call DRAWWITHCOORD 
+        mov ebx, [ebx + 4]
+
+        DRAWSNAKE:
+            test ebx, ebx
+            jz >snakeend
+            
+            mov eax, ADDR RECT
+            mov edx, [ebx]
+            mov ecx, 18
+            call DRAWWITHCOORD 
+
+            mov ebx, [ebx + 4]
+            jmp DRAWSNAKE
+        snakeend:
+
+        mov eax, ADDR RECT
+        mov edx, [foodCoord]
+        mov ecx, [REDBRUSH]         ;note: don't forget (color + 1)
+        call DRAWWITHCOORD
+
+        push 0x00CC0020
+        push 0, 0
+        push [memDC]
+        push 700, 700
+        push 0, 0
+        push [hDC]
+        call BitBlt
+
+        PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
+        CALL EndPaint
+        XOR EAX,EAX
+        RET
+
+    WELCOMEPAINT:
+        MOV EBX,ADDR PAINTSTRUCT
+        PUSH EBX,[hwnd]           ;EBP+8h=hwnd
+        CALL BeginPaint             ;get device context to use, initialise paint
+        MOV [hDC],EAX
+
+        ; push [hwnd]
+        ; call GetDC
+        ; mov [hDC], eax
+
+        push eax
+        call CreateCompatibleDC
+        mov [memDC], eax
+
+
+        push [hImage]
+        push [memDC]
+        call SelectObject
+     
+        push 0x00CC0020
+        push 0, 0
+        push [memDC]
+        push [bitmap+8], [bitmap+4]
+        push 0, 0
+        push [hDC]
+        call BitBlt
+
+        
+
+        PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
+        CALL EndPaint
+        XOR EAX,EAX
+        RET
+
+
+    PAINT:
+        xor eax, eax
+        mov al, [CURRWIND]
+        call [WINDOWS + eax*4]
+
+        XOR EAX,EAX
+        RET
+
+    GETBUTTON:
+        ; push    [rbp]
+        ; mov     rbp, rsp
+        mov     si, ax
+        rol eax, 16
+        mov     di, ax
+
+        cmp     si, 15
+        jle     >.L2
+        cmp     si, 239
+        jg      >.L2
+        cmp     di, 430
+        jle     >.L2
+        cmp     di, 534
+        jg      >.L2
+        mov     eax, 3
+        jmp     >.L3
+    .L2:
+        cmp     si, 200
+        jle     >.L4
+        cmp     si, 509
+        jg      >.L4
+        cmp     di, 575
+        jle     >.L4
+        cmp     di, 679
+        jg      >.L4
+        mov     eax, 2
+        jmp     >.L3
+    .L4:
+        cmp     si, 465
+        jle     >.L5
+        cmp     si, 689
+        jg      >.L5
+        cmp     di, 430
+        jle     >.L5
+        cmp     di, 534
+        jg      >.L5
+        mov     eax, 1
+        jmp     >.L3
+    .L5:
+        mov     eax, 0
+    .L3:
+        ; pop     rbp
+        ret
+
+    MLDOWN:
+        mov al, [CURRWIND]
+        test al, al
+        jz >notnow
+            PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
+            PUSH 20D,'from inside foodeaten'    ;24=length of string
+            PUSH [hASB]                ;handle to active screen buffer
+            CALL WriteFile    
+
+            mov eax, [ebp+14h]
+            call GETBUTTON
+            mov b[CURRWIND], 0
+            
+            mov ebx, 10
+            mul ebx
+            add eax, 20
+        
+            push ADDR TIMER
+            push eax
+            push 42
+            push [hwnd]
+            call SetTimer
+
+            call INITSNAKE
+        notnow:
+        ret
+
+
+
+    TIMER:
+        mov al, [CURRWIND]
+        test al, al
+        jnz >notmaingame
+            call CONTROLLER
+        notmaingame:
+        push 1
+        push 0
+        push [hwnd]
+        call InvalidateRect
+
+        push [hwnd]
+        CALL UpdateWindow
+        RET 10h
+
+
+    KEYDOWN:
+        mov eax, [ebp+10h]  ;note: key is in the wparam
+        sub eax, 0x25
+        js >continue
+        cmp eax, 3
+        jg >continue
+        jmp [KEYS + eax*4]
+        continue:
+        xor eax, eax
+        ret
+
+    GENERAL_WNDPROC:        ;eax can be used to convey information to the call
+        PUSH EBP                ;use ebp to avoid using eax which may hold information
+        MOV EBP,[ESP+10h]       ;uMsg
+        MOV ECX,[EDX]           ;get number of messages to do
+        ADD EDX,4               ;jump over size dword
+        L2:
+            DEC ECX
+            JS >L3
+            CMP [EDX+ECX*8],EBP     ;see if its the correct message
+            JNZ L2                  ;no
+            MOV EBP,ESP
+            PUSH ESP,EBX,EDI,ESI    ;save registers as required by Windows
+            ADD EBP,4               ;allow for the extra call to here
+            ;now [EBP+8]=hwnd, [EBP+0Ch]=uMsg, [EBP+10h]=wParam, [EBP+14h]=lParam,
+            CALL [EDX+ECX*8+4]      ;call the correct procedure for the message
+            POP ESI,EDI,EBX,ESP
+            JNC >L4                 ;nc=return value in eax - don't call DefWindowProc
+        L3:
+            PUSH [ESP+18h],[ESP+18h],[ESP+18h],[ESP+18h]     ;allowing for change of ESP
+            CALL DefWindowProcA
+        L4:
+            POP EBP
+        RET
+    ;
+    ;******************* This is the actual window procedure
+    WndProcTable:
+        MOV EDX,ADDR MESSAGES   ;give edx the list of messages to deal with
+        CALL GENERAL_WNDPROC    ;call the generic message handler
+        RET 10h              ;restore the stack as required by caller
+
+
+    INITIALISE_WNDCLASS:    ;get ready to register the window class
+        MOV EBX,ADDR WNDCLASS
+        MOV EAX,9
+
+        L1:
+            MOV D[EBX+EAX*4],0      ;fill it with zeroes
+            DEC EAX
+            JNS L1
+            ;***** add things to window class for all windows in the program ..
+        MOV EAX,[hInst]         ;get handle to the process
+        MOV [EBX+10h],EAX       ;make it the window class
+        PUSH 32512              ;IDC_ARROW common cursor
+        PUSH 0
+        CALL LoadCursorA        ;get in eax, handle to arrow cursor
+        MOV [EBX+18h],EAX       ;and give to WNDCLASS
+        MOV D[EBX+1Ch],6D       ;set background brush to COLOR_WINDOW+1
+        RET
+
+    
+    INITANDLOAD:
         rdseed eax
         mov [SEED], eax
 
@@ -323,252 +655,20 @@ CODE SECTION
         call CreateSolidBrush
         mov [BLACKBRUSH], eax
 
-
-        call RAND
-        mov [foodCoord], eax
-
-        
-        invoke HeapAlloc, [hHeap], dwFlags, 9 ; wrong size (i don't even know how does this still works)
-        mov [head], eax
-    
-
-        mov [tail], eax
-        mov [eax], 0x00320031
-        mov ecx, 0x00320032
-        L1:
-            push ecx
-            CALL ADDNEWNODE
-            pop ecx
-            mov [eax], ecx
-            inc ecx
-            cmp ecx, 0x00320038
-            jne L1
         RET
 
-    CREATE:                 ;one of the few messages dealt with by this prog
-        XOR EAX,EAX             ;return zero to make window
-        RET
-        ;
-    DESTROY:                ;one of the few messages dealt with by this prog
-        PUSH 0
-        CALL PostQuitMessage    ;exit via the message loop
-        STC                     ;go to DefWindowProc too
-        RET
-
-    DRAWWITHCOORD: ; put coord into edx before calling
-        imul dx, SCALE
-        mov [eax], dx
-        ADD dx, SIDELEN
-        mov [eax+8], dx
-
-        shr edx, 16
-        imul dx, SCALE
-        mov [eax+4], dx
-        ADD dx, SIDELEN
-        mov [eax+12], dx
-
-        push ecx
-        push eax
-        push [hDC]
-
-        call FillRect
-
-        ret
-
-
-    GAMEPAINT:
-        MOV EBX,ADDR PAINTSTRUCT
-        PUSH EBX,[hwnd]           ;EBP+8h=hwnd
-        CALL BeginPaint             ;get device context to use, initialise paint
-        MOV [hDC],EAX
-        
-
-        mov eax, ADDR RECT
-        mov d[eax], 0
-        mov d[eax+4], 0
-        mov d[eax+8], 750
-        mov d[eax+12], 750
-        push [BLACKBRUSH]
-        push eax
-        push [hDC]
-        call FillRect
-
-        mov ebx, [head]              ;could be improved by utilizing the fact that most 
-                                        ;of the information is already in the stack 
-                                        ;and just shifting the stack
-                                        ;pointer to reinclude the data
-
-        mov eax, ADDR RECT
-        mov edx, [ebx]
-        mov ecx, 27
-        call DRAWWITHCOORD 
-        mov ebx, [ebx + 4]
-
-        DRAWSNAKE:
-            test ebx, ebx
-            jz >snakeend
-            
-            mov eax, ADDR RECT
-            mov edx, [ebx]
-            mov ecx, 18
-            call DRAWWITHCOORD 
-
-            mov ebx, [ebx + 4]
-            jmp DRAWSNAKE
-        snakeend:
-
-        mov eax, ADDR RECT
-        mov edx, [foodCoord]
-        mov ecx, [REDBRUSH]         ;note: don't forget (color + 1)
-        call DRAWWITHCOORD
-
-        PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
-        CALL EndPaint
-        XOR EAX,EAX
-        RET
-
-    WELCOMEPAINT:
-        ; MOV EBX,ADDR PAINTSTRUCT
-        ; PUSH EBX,[hwnd]           ;EBP+8h=hwnd
-        ; CALL BeginPaint             ;get device context to use, initialise paint
-        ; MOV [hDC],EAX
-
-        push [hwnd]
-        call GetDC
-        mov [hDC], eax
-
-        push eax
-        call CreateCompatibleDC
-        mov [memDC], eax
-
-
-        push [hImage]
-        push [memDC]
-        call SelectObject
-        
-        push 0x00CC0020
-        push 0, 0
-        push [memDC]
-        push [bitmap+8], [bitmap+4]
-        push 0, 0
-        push [hDC]
-        call BitBlt
-
-        
-
-        PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
-        CALL EndPaint
-        XOR EAX,EAX
-        RET
-
-
-    PAINT:
-        xor eax, eax
-        mov al, [CURRWIND]
-        call [WINDOWS + eax*4]
-
-        XOR EAX,EAX
-        RET
-
-    MLDOWN:
-        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
-        PUSH 20D,'from inside foodeaten'    ;24=length of string
-        PUSH [hASB]                ;handle to active screen buffer
-        CALL WriteFile
-
-        mov b[CURRWIND], 0
-        ret
-
-
-
-    TIMER:
-        mov al, [CURRWIND]
-        test al, al
-        jnz >notmaingame
-            call CONTROLLER
-        notmaingame:
-        push 1
-        push 0
-        push [hwnd]
-        call InvalidateRect
-
-        push [hwnd]
-        CALL UpdateWindow
-        RET 10h
-
-
-    KEYDOWN:
-        mov eax, [ebp+10h]  ;note: key is in the wparam
-        sub eax, 0x25
-        js >continue
-        cmp eax, 3
-        jg >continue
-        call [KEYS + eax*4]
-        continue:
-        xor eax, eax
-        ret
-
-    GENERAL_WNDPROC:        ;eax can be used to convey information to the call
-        PUSH EBP                ;use ebp to avoid using eax which may hold information
-        MOV EBP,[ESP+10h]       ;uMsg
-        MOV ECX,[EDX]           ;get number of messages to do
-        ADD EDX,4               ;jump over size dword
-        L2:
-            DEC ECX
-            JS >L3
-            CMP [EDX+ECX*8],EBP     ;see if its the correct message
-            JNZ L2                  ;no
-            MOV EBP,ESP
-            PUSH ESP,EBX,EDI,ESI    ;save registers as required by Windows
-            ADD EBP,4               ;allow for the extra call to here
-            ;now [EBP+8]=hwnd, [EBP+0Ch]=uMsg, [EBP+10h]=wParam, [EBP+14h]=lParam,
-            CALL [EDX+ECX*8+4]      ;call the correct procedure for the message
-            POP ESI,EDI,EBX,ESP
-            JNC >L4                 ;nc=return value in eax - don't call DefWindowProc
-        L3:
-            PUSH [ESP+18h],[ESP+18h],[ESP+18h],[ESP+18h]     ;allowing for change of ESP
-            CALL DefWindowProcA
-        L4:
-            POP EBP
-        RET
-    ;
-    ;******************* This is the actual window procedure
-    WndProcTable:
-        MOV EDX,ADDR MESSAGES   ;give edx the list of messages to deal with
-        CALL GENERAL_WNDPROC    ;call the generic message handler
-        RET 10h              ;restore the stack as required by caller
-
-
-    INITIALISE_WNDCLASS:    ;get ready to register the window class
-        MOV EBX,ADDR WNDCLASS
-        MOV EAX,9
-
-        L1:
-            MOV D[EBX+EAX*4],0      ;fill it with zeroes
-            DEC EAX
-            JNS L1
-            ;***** add things to window class for all windows in the program ..
-        MOV EAX,[hInst]         ;get handle to the process
-        MOV [EBX+10h],EAX       ;make it the window class
-        PUSH 32512              ;IDC_ARROW common cursor
-        PUSH 0
-        CALL LoadCursorA        ;get in eax, handle to arrow cursor
-        MOV [EBX+18h],EAX       ;and give to WNDCLASS
-        MOV D[EBX+1Ch],6D       ;set background brush to COLOR_WINDOW+1
-        RET
 
 
     START:
         PUSH -11D               ;STD_OUTPUT_HANDLE
         CALL GetStdHandle
         mov [hASB], eax
-        
-        
 
         PUSH 0
         CALL GetModuleHandleA   ;get handle to the process
         MOV [hInst],EAX         ;record it in data label hInst
 
+        call INITANDLOAD
         CALL INITSNAKE
         CALL INITIALISE_WNDCLASS
 
@@ -588,13 +688,6 @@ CODE SECTION
         PUSH 0                  ;extended window style
         CALL CreateWindowExA    ;make window, returning handle in EAX
         mov [hwnd], eax
-
-        push ADDR TIMER
-        push 0x3D
-        push 42
-        push eax
-        call SetTimer
-
 
         call INITSNAKE
 

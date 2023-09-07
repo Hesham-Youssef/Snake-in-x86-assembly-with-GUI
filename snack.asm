@@ -271,8 +271,11 @@ CODE SECTION
 
 
     INITSNAKE:
-
+        mov B[ISALIVE], 1
         mov w[score], 0
+
+        mov w[valx], -1
+        mov w[valy], 0
 
         call RAND
         mov [foodCoord], eax
@@ -423,10 +426,16 @@ CODE SECTION
         push [hDC]
         call BitBlt
 
-        
-
         PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
         CALL EndPaint
+
+        push [hDC]
+        push [hwnd]
+        call ReleaseDC
+
+        push [memDC]
+        call DeleteDC
+
         XOR EAX,EAX
         RET
 

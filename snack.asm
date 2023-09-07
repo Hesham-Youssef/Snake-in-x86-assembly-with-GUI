@@ -86,7 +86,7 @@ DATA SECTION
 
     WINDOWS     DD      GAMEPAINT 
                 DD      WELCOMEPAINT
-                ; DD      DEATHPAINT
+                DD      SHOWSCORE
 
     bitmap      DD      ?   ;+0 bmtype
                 DD      ?   ;+4 bmwidth
@@ -99,6 +99,8 @@ DATA SECTION
 
     gamespeed   DD      ?
     score       DW      ?
+
+    scoremessage    DB  'YOUR SCORE IS '
 CODE SECTION
 
     LEFT_KEY:
@@ -163,11 +165,6 @@ CODE SECTION
 
     FOODEATEN: ;Reallocate extra cell and randomize the foods position
         ; call ADDNEWNODE
-        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
-        PUSH 20D,'from inside foodeaten'    ;24=length of string
-        PUSH [hASB]                ;handle to active screen buffer
-        CALL WriteFile
-
         mov ecx, 3
         ADDCELLS:
             push ecx
@@ -252,7 +249,7 @@ CODE SECTION
             push 42
             push [hwnd]
             call KillTimer
-            mov B[CURRWIND], 1
+            mov B[CURRWIND], 2
         goon:
         RET
 
@@ -306,6 +303,49 @@ CODE SECTION
         CALL PostQuitMessage    ;exit via the message loop
         STC                     ;go to DefWindowProc too
         RET
+
+    SHOWSCORE:
+        ; MOV EBX,ADDR PAINTSTRUCT
+        ; PUSH EBX,[hwnd]           ;EBP+8h=hwnd
+        ; CALL BeginPaint             ;get device context to use, initialise paint
+        ; MOV [hDC],EAX
+
+        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
+        PUSH 20D,'from inside foodeaten'    ;24=length of string
+        PUSH [hASB]                ;handle to active screen buffer
+        CALL WriteFile
+
+        MOV EBX,ADDR PAINTSTRUCT
+        PUSH EBX,[hwnd]           ;EBP+8h=hwnd
+        CALL BeginPaint             ;get device context to use, initialise paint
+        MOV [hDC],EAX
+
+        ; push [hwnd]
+        ; call GetDC
+        ; mov [hDC], eax
+
+        mov ebx, [score]
+        mov [scoremessage+14], bx
+
+        push 15
+        push ADDR scoremessage
+        push 200
+        push 290
+        push eax
+        call TextOutA
+
+             
+        PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
+        CALL EndPaint
+
+        push [hDC]
+        push [hwnd]
+        call ReleaseDC
+
+        XOR EAX,EAX
+        RET
+
+
 
     DRAWWITHCOORD: ; put coord into edx before calling
         imul dx, SCALE
@@ -396,6 +436,14 @@ CODE SECTION
 
         PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
         CALL EndPaint
+
+        ; push [hDC]
+        ; push [hwnd]
+        ; call ReleaseDC
+
+        push [memDC]
+        call DeleteDC
+
         XOR EAX,EAX
         RET
 
@@ -417,7 +465,8 @@ CODE SECTION
         push [hImage]
         push [memDC]
         call SelectObject
-     
+
+             
         push 0x00CC0020
         push 0, 0
         push [memDC]
@@ -497,26 +546,34 @@ CODE SECTION
         mov al, [CURRWIND]
         test al, al
         jz >notnow
-            PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
-            PUSH 20D,'from inside foodeaten'    ;24=length of string
-            PUSH [hASB]                ;handle to active screen buffer
-            CALL WriteFile    
 
-            mov eax, [ebp+14h]
-            call GETBUTTON
-            mov b[CURRWIND], 0
-            
-            mov ebx, 10
-            mul ebx
-            add eax, 20
+        cmp al, 2
+        jne >inwelcomescreen
+        mov B[CURRWIND], 1
+        push 1
+        push 0
+        push [hwnd]
+        call InvalidateRect
+
+        push [hwnd]
+        CALL UpdateWindow
+        jmp >notnow
         
-            push ADDR TIMER
-            push eax
-            push 42
-            push [hwnd]
-            call SetTimer
-
-            call INITSNAKE
+        inwelcomescreen:
+        mov eax, [ebp+14h]
+        call GETBUTTON
+        mov b[CURRWIND], 0
+        
+        mov ebx, 10
+        mul ebx
+        add eax, 20
+    
+        push ADDR TIMER
+        push eax
+        push 42
+        push [hwnd]
+        call SetTimer
+        call INITSNAKE
         notnow:
         ret
 
@@ -595,7 +652,7 @@ CODE SECTION
         PUSH 0
         CALL LoadCursorA        ;get in eax, handle to arrow cursor
         MOV [EBX+18h],EAX       ;and give to WNDCLASS
-        MOV D[EBX+1Ch],6D       ;set background brush to COLOR_WINDOW+1
+        MOV D[EBX+1Ch],0       ;set background brush to COLOR_WINDOW+1
         RET
 
     

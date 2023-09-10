@@ -99,8 +99,11 @@ DATA SECTION
 
     gamespeed   DD      ?
     score       DW      ?
-
+    
+    number_buffer DB 20 DUP 0
+    number_len DB 0
     scoremessage    DB  'YOUR SCORE IS '
+                    DB 10   DUP 0
 CODE SECTION
 
     LEFT_KEY:
@@ -304,6 +307,22 @@ CODE SECTION
         STC                     ;go to DefWindowProc too
         RET
 
+    SCORETOSTRING:  
+        mov ax, [score]
+        mov bx, 10
+        mov ecx, 0
+        notzero:
+            xor dx, dx
+            div bx
+            add dx, 48
+            mov [number_buffer+ecx], dl
+            inc ecx
+            test ax, ax
+            jnz notzero
+        mov b[number_buffer+ecx], 0
+        mov [number_len], cl
+        ret
+
     SHOWSCORE:
         ; MOV EBX,ADDR PAINTSTRUCT
         ; PUSH EBX,[hwnd]           ;EBP+8h=hwnd
@@ -315,6 +334,16 @@ CODE SECTION
         PUSH [hASB]                ;handle to active screen buffer
         CALL WriteFile
 
+        call SCORETOSTRING
+        dec ecx
+
+        stillappending:
+            mov al, [number_buffer+ecx]
+            mov [scoremessage+14+ecx], al
+            dec ecx
+            test ecx, ecx
+            jns stillappending
+
         MOV EBX,ADDR PAINTSTRUCT
         PUSH EBX,[hwnd]           ;EBP+8h=hwnd
         CALL BeginPaint             ;get device context to use, initialise paint
@@ -324,14 +353,21 @@ CODE SECTION
         ; call GetDC
         ; mov [hDC], eax
 
-        mov ebx, [score]
-        mov [scoremessage+14], bx
+        ; mov ebx, [score]
+        ; mov [scoremessage+14], bx
 
         push 15
         push ADDR scoremessage
         push 200
         push 290
         push eax
+        call TextOutA
+
+        push 38
+        push "CLICK ANYWHERE TO GO BACK TO MAIN MENU"
+        push 300
+        push 190
+        push [hDC]
         call TextOutA
 
              

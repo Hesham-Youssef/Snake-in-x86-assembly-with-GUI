@@ -9,3 +9,9 @@ ah.c
 a.exe
 .vscode/settings.json
 GoBug/GoBug.ini
+test.asm
+test.exe
+test.obj
+GoBug/GoBug.ini
+test.asm
+GoBug/GoBug.ini

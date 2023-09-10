@@ -598,6 +598,9 @@ CODE SECTION
         inwelcomescreen:
         mov eax, [ebp+14h]
         call GETBUTTON
+        test eax, eax
+        jz >notnow
+
         mov b[CURRWIND], 0
         
         mov ebx, 10

@@ -41,7 +41,7 @@ DATA SECTION
 
     hInst   DD      0
 
-    WINDOW_CLASSNAME DB 'hello',0
+    WINDOW_CLASSNAME DB 'WM',0
 
     hDC   DD 0            ;to keep the handle of the device context
     PAINTSTRUCT DD 16 DUP 0  ;structure to hold stuff from Windows on WM_PAINT
@@ -181,6 +181,9 @@ CODE SECTION
             mov ebx, [ebx + 4]
             jmp stillfreeing
         donefreeing:
+
+        mov d[head], 0
+
         ret
 
     FOODEATEN: ;Reallocate extra cell and randomize the foods position

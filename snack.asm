@@ -852,7 +852,7 @@ CODE SECTION
             PUSH [hInst],ADDR WINDOW_CLASSNAME   ;message was WM_QUIT
             CALL UnregisterClassA   ;ensure class is removed
             PUSH [MSG+8h]           ;exit code (send contents of wParam)
-            ; call FREEMEM
+            call FREEMEM
             CALL ExitProcess        ;return to Windows in the manner it prefers
         
     

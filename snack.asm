@@ -104,6 +104,9 @@ DATA SECTION
     number_len DB 0
     scoremessage    DB  'YOUR SCORE IS '
                     DB 10   DUP 0
+
+    mylock DB 0
+    button_clicked   DB  2
 CODE SECTION
 
     LEFT_KEY:
@@ -168,7 +171,7 @@ CODE SECTION
 
     FOODEATEN: ;Reallocate extra cell and randomize the foods position
         ; call ADDNEWNODE
-        mov ecx, 3
+        mov ecx, 5
         ADDCELLS:
             push ecx
             call ADDNEWNODE
@@ -191,8 +194,11 @@ CODE SECTION
         test al, al
         jz >goon
 
+        MOVZX eax, b[button_clicked]
+        jmp [KEYS + eax*4]
+        continue:
+
         mov esi, [head]
-        
 
         mov eax, d[esi]
 
@@ -613,6 +619,8 @@ CODE SECTION
         push [hwnd]
         call SetTimer
         call INITSNAKE
+        
+        mov b[button_clicked], 2
         notnow:
         ret
 
@@ -633,15 +641,28 @@ CODE SECTION
         CALL UpdateWindow
         RET 10h
 
+    ; CLOSELOCK:
+    ;     mov al, 0
+    ;     mov ah, 1
+    ;     CMPXCHG B[mylock], ah
+    ;     jnz CLOSELOCK
+    ;     ret
 
-    KEYDOWN:
+    ; OPENLOCK:
+    ;     mov al, 1
+    ;     mov ah, 0
+    ;     CMPXCHG B[mylock], ah
+    ;     ret
+
+    KEYDOWN:        
         mov eax, [ebp+10h]  ;note: key is in the wparam
         sub eax, 0x25
-        js >continue
+        js >donothing
         cmp eax, 3
-        jg >continue
-        jmp [KEYS + eax*4]
-        continue:
+        jg >donothing
+        mov [button_clicked], al
+        ; jmp [KEYS + eax*4]
+        donothing:
         xor eax, eax
         ret
 

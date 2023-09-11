@@ -107,6 +107,7 @@ DATA SECTION
 
     mylock DB 0
     button_clicked   DB  2
+    oHandle     DD  0
 CODE SECTION
 
     LEFT_KEY:
@@ -344,10 +345,6 @@ CODE SECTION
         ret
 
     SHOWSCORE:
-        ; MOV EBX,ADDR PAINTSTRUCT
-        ; PUSH EBX,[hwnd]           ;EBP+8h=hwnd
-        ; CALL BeginPaint             ;get device context to use, initialise paint
-        ; MOV [hDC],EAX
 
         call SCORETOSTRING
         dec ecx
@@ -432,6 +429,7 @@ CODE SECTION
         push 750
         push [hDC]
         call CreateCompatibleBitmap
+        mov [oHandle], eax
 
         push eax
         push [memDC]
@@ -495,6 +493,9 @@ CODE SECTION
         push [hwnd]
         call ReleaseDC
 
+        push [oHandle]
+        call DeleteObject
+
         XOR EAX,EAX
         RET
 
@@ -503,10 +504,6 @@ CODE SECTION
         PUSH EBX,[hwnd]           ;EBP+8h=hwnd
         CALL BeginPaint             ;get device context to use, initialise paint
         MOV [hDC],EAX
-
-        ; push [hwnd]
-        ; call GetDC
-        ; mov [hDC], eax
 
         push eax
         call CreateCompatibleDC
@@ -549,8 +546,6 @@ CODE SECTION
         RET
 
     GETBUTTON:
-        ; push    [rbp]
-        ; mov     rbp, rsp
         mov     si, ax
         rol eax, 16
         mov     di, ax
@@ -590,7 +585,6 @@ CODE SECTION
     .L5:
         mov     eax, 0
     .L3:
-        ; pop     rbp
         ret
 
     MLDOWN:
@@ -650,18 +644,6 @@ CODE SECTION
         CALL UpdateWindow
         RET 10h
 
-    ; CLOSELOCK:
-    ;     mov al, 0
-    ;     mov ah, 1
-    ;     CMPXCHG B[mylock], ah
-    ;     jnz CLOSELOCK
-    ;     ret
-
-    ; OPENLOCK:
-    ;     mov al, 1
-    ;     mov ah, 0
-    ;     CMPXCHG B[mylock], ah
-    ;     ret
 
     KEYDOWN:        
         mov eax, [ebp+10h]  ;note: key is in the wparam
@@ -768,6 +750,9 @@ CODE SECTION
         push [hImage]
         call GetBitmapBits
 
+        push [hImage]
+        call DeleteObject
+
         xor ebx, ebx
         mov bx, [bitmap+18]
         push [bitmap+20]
@@ -793,11 +778,33 @@ CODE SECTION
         RET
 
 
+    FREEMEM:
+        invoke HeapFree, [hHeap], 0, [bitmap+20]
+
+        call FREESNAKE
+
+        push [hImage]
+        call DeleteObject
+
+        push [REDBRUSH]
+        call DeleteObject
+
+        push [BLACKBRUSH]
+        call DeleteObject
+
+        push 0
+        push 0
+        push 0
+        call PlaySound
+
+        ret
+
 
     START:
-        PUSH -11D               ;STD_OUTPUT_HANDLE
-        CALL GetStdHandle
-        mov [hASB], eax
+        push 131081
+        push 0
+        push "sound.wav"
+        call PlaySound
 
         PUSH 0
         CALL GetModuleHandleA   ;get handle to the process
@@ -842,6 +849,7 @@ CODE SECTION
             PUSH [hInst],ADDR WINDOW_CLASSNAME   ;message was WM_QUIT
             CALL UnregisterClassA   ;ensure class is removed
             PUSH [MSG+8h]           ;exit code (send contents of wParam)
+            ; call FREEMEM
             CALL ExitProcess        ;return to Windows in the manner it prefers
         
     

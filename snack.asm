@@ -36,7 +36,7 @@ DATA SECTION
     foodCoord   DD  ?
 
     hHeap   DD      ?
-    dwBytes equ     sizeof CELL + 1
+    dwBytes equ     sizeof CELL
     dwFlags equ     0x00000008 ; HEAP_ZERO_MEMORY (sets newly allocated mem to zero)
 
     hInst   DD      0
@@ -169,6 +169,19 @@ CODE SECTION
 
         ret
 
+    FREESNAKE:
+        mov ebx, [head]
+        stillfreeing:
+            test ebx, ebx
+            jz >donefreeing
+            
+            invoke HeapFree, [hHeap], 0, ebx
+
+            mov ebx, [ebx + 4]
+            jmp stillfreeing
+        donefreeing:
+        ret
+
     FOODEATEN: ;Reallocate extra cell and randomize the foods position
         ; call ADDNEWNODE
         mov ecx, 5
@@ -259,6 +272,7 @@ CODE SECTION
             push [hwnd]
             call KillTimer
             mov B[CURRWIND], 2
+            call FREESNAKE
         goon:
         RET
 
@@ -268,7 +282,7 @@ CODE SECTION
 
 
     ADDNEWNODE:
-        invoke HeapAlloc, [hHeap], dwFlags, 9 ;8 for the node and one extra because otherwise an error will occur
+        invoke HeapAlloc, [hHeap], dwFlags, dwBytes ;8 for the node and one extra because otherwise an error will occur
         mov ebx, [tail]
         mov [ebx+4], eax
         mov [tail], eax
@@ -335,11 +349,6 @@ CODE SECTION
         ; CALL BeginPaint             ;get device context to use, initialise paint
         ; MOV [hDC],EAX
 
-        PUSH 0,ADDR RCKEEP      ;RCKEEP receives output from API
-        PUSH 20D,'from inside foodeaten'    ;24=length of string
-        PUSH [hASB]                ;handle to active screen buffer
-        CALL WriteFile
-
         call SCORETOSTRING
         dec ecx
 
@@ -404,8 +413,8 @@ CODE SECTION
         push ecx
         push eax
         push [memDC]
-
         call FillRect
+
         ret
 
 
@@ -436,7 +445,7 @@ CODE SECTION
         mov d[eax+12], 750
         push [BLACKBRUSH]
         push eax
-        push [hDC]
+        push [memDC]
         call FillRect
 
         mov ebx, [head]              ;could be improved by utilizing the fact that most 
@@ -479,12 +488,12 @@ CODE SECTION
         PUSH ADDR PAINTSTRUCT, [hwnd]           ;EBP+8h=hwnd
         CALL EndPaint
 
-        ; push [hDC]
-        ; push [hwnd]
-        ; call ReleaseDC
-
         push [memDC]
         call DeleteDC
+
+        push [hDC]
+        push [hwnd]
+        call ReleaseDC
 
         XOR EAX,EAX
         RET

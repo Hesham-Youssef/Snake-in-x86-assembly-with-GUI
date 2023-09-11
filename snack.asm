@@ -331,7 +331,7 @@ CODE SECTION
     SCORETOSTRING:  
         mov ax, [score]
         mov bx, 10
-        mov ecx, 0
+        xor ecx, ecx
         notzero:
             xor dx, dx
             div bx
@@ -368,7 +368,10 @@ CODE SECTION
         ; mov ebx, [score]
         ; mov [scoremessage+14], bx
 
-        push 15
+        movzx ecx, b[number_len]
+        add ecx, 15
+
+        push ecx
         push ADDR scoremessage
         push 200
         push 290
